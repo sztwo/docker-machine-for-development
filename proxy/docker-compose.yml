@@ -1,0 +1,95 @@
+version: '2'
+volumes:
+  certs:
+    driver: local
+  letsencrypt_html:
+    driver: local
+services:
+  datastore:
+    image: busybox
+    container_name: proxy-datastore
+    volumes:
+      - certs:/etc/nginx/certs
+      - letsencrypt_html:/usr/share/nginx/html
+
+  # https://github.com/jwilder/nginx-proxy
+  nginx-proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    # restart: always
+    ports:
+      - "80:80"  # Without this description Let's Encrypt fails self-authentication. External release may not be necessary.
+      - "443:443"
+    logging:
+      options:
+        max-size: 5m
+        max-file: "10"
+    volumes:
+      - ./config/nginx.tmpl:/app/nginx.tmpl:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./config/htpasswd:/etc/nginx/htpasswd
+      - certs:/etc/nginx/certs:ro
+      - /etc/nginx/vhost.d  # it needs letsencrypt-nginx-proxy-companion.
+    volumes_from:
+      - datastore
+    environment:
+      - ENABLE_IPV6=true
+      - DEFAULT_HOST=your.domain,www.your.domain
+    labels:
+      - com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy
+
+  # https://github.com/JrCs/docker-letsencrypt-nginx-proxy-companion
+  letsencrypt-nginx-proxy-companion:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt-companion
+    # restart: always
+    logging:
+      options:
+        max-size: 5m
+        max-file: "10"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - certs:/etc/nginx/certs:rw
+      - letsencrypt_html:/usr/share/nginx/html:rw
+    volumes_from:
+      - nginx-proxy
+      - datastore
+    environment:
+      - ACME_CA_URI=https://acme-staging.api.letsencrypt.org/directory  # This is for staging. In a production environment, comment out it.
+
+  web:
+    image: nginx:mainline-alpine
+    container_name: web
+    command: "nginx -g 'daemon off;'"
+    # restart: always
+    logging:
+      options:
+        max-size: 5m
+        max-file: "10"
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/nginx.conf
+      - ./web/public:/app
+      - ./web/log:/var/log/nginx
+    environment:
+      - ALLOW_DOMAIN=192.168.0.3,192.168.1.5  # Basic authentication is not required when accessing from the specified IP address.
+      - VIRTUAL_HOST=your.domain,www.your.domain
+      - LETSENCRYPT_HOST=your.domain,www.your.domain
+      - LETSENCRYPT_EMAIL=letsencrypt-admin@your.domain
+      # - LETSENCRYPT_TEST=true
+    expose:
+      - "80"
+
+  whoami:
+    image: jwilder/whoami
+    container_name: whoami
+    environment:
+      - ALLOW_DOMAIN=192.168.0.3
+      - VIRTUAL_HOST=whoami.your.domain
+      - LETSENCRYPT_HOST=whoami.your.domain
+      - LETSENCRYPT_EMAIL=letsencrypt-admin@your.domain
+      # - LETSENCRYPT_TEST=true
+
+networks:
+  default:
+    external:
+      name: shared

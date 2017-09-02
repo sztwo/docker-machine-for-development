@@ -1,0 +1,21 @@
+version: '2'
+services:
+  # https://hub.docker.com/r/garland/aws-cli-docker/
+  aws-cli:
+    image: garland/aws-cli-docker
+    container_name: aws-cli
+    logging:
+      options:
+        max-size: 5m
+        max-file: "10"
+    volumes:
+      - ./:/app
+    environment:
+      - AWS_ACCESS_KEY_ID=#{AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=#{AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=ap-northeast-1
+
+# networks:
+#   default:
+#     external:
+#       name: shared
